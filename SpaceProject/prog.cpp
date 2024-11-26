@@ -2,12 +2,15 @@
 #include <box2d/box2d.h>
 #include <set>
 #include <cmath>
-#include <cstring>
+#include <vector>
+#include <iostream>
+
+
 
 // Constants
 const float SCALE = 30.0f;              // Pixels per Box2D unit
 const float G = 200.0f;                // Gravitational constant
-const float DECAY_MULTIPLIER = 0.02f; // Decay adjustment factor
+const float DECAY_MULTIPLIER = 0.002f; // Decay adjustment factor
 
 class MyContactListener : public b2ContactListener {
 public:
@@ -22,15 +25,7 @@ public:
 
         if ((userDataA && strcmp((char*)userDataA, "sun") == 0) ||
             (userDataB && strcmp((char*)userDataB, "sun") == 0)) {
-            b2Body* target;
-            if (userDataA && strcmp((char*)userDataA, "sun") == 0)
-            {
-                target = bodyB;
-            } 
-            else 
-            {
-                target =bodyA;
-            }
+            b2Body* target = (userDataA && strcmp((char*)userDataA, "sun") == 0) ? bodyB : bodyA;
             bodiesToDestroy.insert(target);
         }
     }
@@ -40,6 +35,28 @@ int main() {
     // SFML Setup
     sf::RenderWindow window(sf::VideoMode(800, 600), "Sun-Based Gravity with Orbit Decay");
     window.setFramerateLimit(60);
+
+
+    // Load Textures
+    sf::Texture spaceTexture;
+    if (!spaceTexture.loadFromFile("Space.PNG")) {
+        std::cout << "Error loading space texture!" << std::endl;
+        return -1;
+    }
+
+    sf::Texture sunTexture;
+    if (!sunTexture.loadFromFile("Sun.PNG")) {
+        std::cout << "Error loading sun texture!" << std::endl;
+        return -1;
+    }
+
+    // Create Space Background
+    sf::Sprite spaceBackground;
+    spaceBackground.setTexture(spaceTexture);
+    spaceBackground.setScale(
+        static_cast<float>(window.getSize().x) / spaceTexture.getSize().x,
+        static_cast<float>(window.getSize().y) / spaceTexture.getSize().y
+    );
 
     // Box2D World Setup
     b2Vec2 gravity(0.0f, 0.0f); // Disable default gravity
@@ -51,103 +68,157 @@ int main() {
 
     // Sun Setup
     b2BodyDef sunDef;
-    sunDef.position.Set(400.0f / SCALE, 300.0f / SCALE); // Sun at the center -------------------------?????????????????????????????
+    sunDef.position.Set(400.0f / SCALE, 300.0f / SCALE); // Sun at the center
     b2Body* sun = world.CreateBody(&sunDef);
 
-    //Sun shape
     b2CircleShape sunShape;
-    sunShape.m_radius = 30.0f / SCALE;
+    sunShape.m_radius = 70.0f / SCALE;
 
-    //FIXTURES OF THE SUN 
     b2FixtureDef sunFixtureDef;
     sunFixtureDef.shape = &sunShape;
     sun->CreateFixture(&sunFixtureDef);
     sun->GetUserData().pointer = reinterpret_cast<uintptr_t>("sun");
 
-    // Planet Setup
-    b2BodyDef planetDef;
-    planetDef.type = b2_dynamicBody;
-    planetDef.position.Set(600.0f / SCALE, 300.0f / SCALE); // Start to the right of the sun
-    b2Body* planet = world.CreateBody(&planetDef);
-
-    //Planet shape
-    b2CircleShape planetShape;
-    planetShape.m_radius = 15.0f / SCALE;
-
-    //Fixture of the planet
-    b2FixtureDef planetFixtureDef;
-    planetFixtureDef.shape = &planetShape;
-    planetFixtureDef.density = 1.0f;
-    //planetFixtureDef.friction = 0.0f;    // No friction
-    //planetFixtureDef.restitution = 0.0f; // No bounce
-    planet->CreateFixture(&planetFixtureDef);
-
-    // Add initial tangential velocity for orbit //-----------try & error
-    float initialSpeed = 5.0f; // Adjust for a stable orbit
-    b2Vec2 tangentialVelocity(0.0f, -initialSpeed); // Tangential velocity perpendicular to the sun
-    planet->SetLinearVelocity(tangentialVelocity);
-
     // SFML Graphics for Sun
-    sf::CircleShape sunStar(30.0f); // Radius in pixels
-    sunStar.setFillColor(sf::Color::Yellow);
-    sunStar.setOrigin(30.0f, 30.0f); // Center the origin
-    sunStar.setPosition(400.0f, 300.0f); // Center of the screen
+    sf::CircleShape sunStar(70.0f);
+    sunStar.setTexture(&sunTexture);
+   /* sunStar.setFillColor(sf::Color::Yellow);*/
+    sunStar.setOrigin(70.0f, 70.0f);
+    sunStar.setPosition(400.0f, 300.0f);
 
-    // SFML Graphics for Planet
-    sf::CircleShape planetShapeSFML(15.0f); // Radius in pixels
-    planetShapeSFML.setFillColor(sf::Color::Blue);
-    planetShapeSFML.setOrigin(15.0f, 15.0f);
+    // Dynamic planets and orbits
+    std::vector<b2Body*> planets;
+    std::vector<sf::CircleShape> planetShapes;
+        std::vector<std::vector<sf::Vector2f>> orbits; // History of positions for each planet
 
-    // Main Loop
     while (window.isOpen()) {
         sf::Event event;
+        sf::Color PlanetColor(rand() % 255, rand() % 255, rand() % 255);
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed)
                 window.close();
+
+            if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+                sf::Vector2i mousePos = sf::Mouse::getPosition(window);
+                float radius = (std::rand() % 25) + 5;
+
+                // Planet Body Setup
+                b2BodyDef planetDef;
+                planetDef.type = b2_dynamicBody;
+                planetDef.position.Set(mousePos.x / SCALE, mousePos.y / SCALE);
+                b2Body* newPlanet = world.CreateBody(&planetDef);
+
+                //Planet shape
+                b2CircleShape planetShape;
+                planetShape.m_radius = radius / SCALE;
+
+                //Planet fixture
+                b2FixtureDef planetFixture;
+                planetFixture.shape = &planetShape;
+                planetFixture.density = 1.0f;
+                newPlanet->CreateFixture(&planetFixture);
+
+                // Calculate initial velocity
+                b2Vec2 sunPosition = sun->GetPosition();
+                b2Vec2 planetPosition = newPlanet->GetPosition();
+                b2Vec2 direction = sunPosition - planetPosition;
+                float distance = direction.Length();  //distance between 2 points
+                if (distance > 0.0f) {
+                    direction.Normalize();
+                    b2Vec2 tangential(-direction.y, direction.x); // Perpendicular to direction
+                    float orbitalSpeed = std::sqrt(G / distance); // Orbital speed
+                    newPlanet->SetLinearVelocity(orbitalSpeed * tangential);
+                }
+
+                // SFML Circle Setup
+                sf::CircleShape planetShapeSFML(radius);
+                planetShapeSFML.setFillColor(PlanetColor /*sf::Color(rand() % 255, rand() % 255, rand() % 255)*/);
+                planetShapeSFML.setOrigin(radius, radius);
+                planetShapeSFML.setPosition(mousePos.x, mousePos.y);
+
+                planets.push_back(newPlanet);
+                planetShapes.push_back(planetShapeSFML);
+
+                // Add empty orbit for the new planet
+                orbits.push_back(std::vector<sf::Vector2f>());
+
+            }
         }
 
-        // Apply gravitational force between sun and planet
-        b2Vec2 planetPosition = planet->GetPosition();
-        b2Vec2 sunPosition = sun->GetPosition();
+        // Apply gravitational force and decay for all planets
+        for (size_t i = 0; i < planets.size(); ++i) {
+            b2Body* planet = planets[i];
+            b2Vec2 planetPosition = planet->GetPosition();
+            b2Vec2 sunPosition = sun->GetPosition();
+            b2Vec2 direction = sunPosition - planetPosition;
+            float distance = direction.Length();
 
-        b2Vec2 direction = sunPosition - planetPosition; // Vector from planet to sun
-        float distance = direction.Length(); //distance between 2 points
+            if (distance > 0.0f) {
+                direction.Normalize();
+                float forceMagnitude = (G * planet->GetMass()) / (distance * distance);
+                b2Vec2 gravitationalForce = forceMagnitude * direction;
+                planet->ApplyForceToCenter(gravitationalForce, true);
 
-        if (distance > 0.0f) {
-            direction.Normalize(); // Unit vector
-            float forceMagnitude = (G * planet->GetMass()) / (distance * distance); //newton
-            b2Vec2 gravitationalForce = forceMagnitude * direction;
-            planet->ApplyForceToCenter(gravitationalForce, true);
+                // Orbital decay
+                b2Vec2 decay = -planet->GetLinearVelocity();
+                decay *= DECAY_MULTIPLIER * distance;
+                planet->ApplyForceToCenter(decay, true);
+            }
 
-            // Simulate orbital decay (adjust speed to move closer over time)
-            b2Vec2 decay = -planet->GetLinearVelocity();
-            decay *= DECAY_MULTIPLIER * distance; // Decay proportional to distance
-            planet->ApplyForceToCenter(decay, true);
+            // Update orbit history
+            orbits[i].push_back(sf::Vector2f(planetPosition.x * SCALE, planetPosition.y * SCALE));
+            if (orbits[i].size() > 70) { // Limit orbit size
+                orbits[i].erase(orbits[i].begin());
+            }
         }
+
 
         // Step the simulation
-        float timeStep = 1.0f / 60.0f;
-        /*int velocityIterations = 8;
-        int positionIterations = 3;*/
-        world.Step(timeStep, 0, 0);
+        world.Step(1.0f / 60.0f, 8, 3);
 
-        // Destroy bodies marked for removal
         for (b2Body* body : contactListener.bodiesToDestroy) {
+            auto it = std::find(planets.begin(), planets.end(), body);
+            if (it != planets.end()) {
+                size_t index = std::distance(planets.begin(), it);
+                planets.erase(it);
+                planetShapes.erase(planetShapes.begin() + index);
+                orbits.erase(orbits.begin() + index);
+           
+            }
             world.DestroyBody(body);
         }
         contactListener.bodiesToDestroy.clear();
 
-        // Update SFML shapes dynamically
-        if (planet->IsEnabled()) {
-            planetShapeSFML.setPosition(planet->GetPosition().x * SCALE, planet->GetPosition().y * SCALE);
+   
+
+        // Update SFML shapes based on body position
+
+        for (size_t i = 0; i < planets.size(); ++i) {
+            b2Vec2 position = planets[i]->GetPosition();
+            planetShapes[i].setPosition(position.x * SCALE, position.y * SCALE);
         }
 
         // Render
         window.clear();
+        window.draw(spaceBackground);
         window.draw(sunStar);
-        if (planet->IsEnabled()) {
-            window.draw(planetShapeSFML);
+
+        // Draw orbits
+        for (const auto& orbit : orbits) {
+            sf::VertexArray orbitLine(sf::LineStrip, orbit.size());
+            for (size_t j = 0; j < orbit.size(); ++j) {
+                orbitLine[j].position = orbit[j];
+                orbitLine[j].color = sf::Color(rand()%255, rand()%255, rand()%255); //  color
+            }
+            window.draw(orbitLine);
         }
+
+
+        // Draw planets
+        for (const auto& shape : planetShapes) {
+            window.draw(shape);
+        }
+
         window.display();
     }
 
