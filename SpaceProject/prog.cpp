@@ -82,14 +82,15 @@ int main() {
     // SFML Graphics for Sun
     sf::CircleShape sunStar(70.0f);
     sunStar.setTexture(&sunTexture);
-   /* sunStar.setFillColor(sf::Color::Yellow);*/
+    /* sunStar.setFillColor(sf::Color::Yellow);*/
     sunStar.setOrigin(70.0f, 70.0f);
     sunStar.setPosition(400.0f, 300.0f);
+    
 
     // Dynamic planets and orbits
     std::vector<b2Body*> planets;
     std::vector<sf::CircleShape> planetShapes;
-        std::vector<std::vector<sf::Vector2f>> orbits; // History of positions for each planet
+    std::vector<std::vector<sf::Vector2f>> orbits; // History of positions for each planet
 
     while (window.isOpen()) {
         sf::Event event;
@@ -161,7 +162,7 @@ int main() {
 
                 // Orbital decay
                 b2Vec2 decay = -planet->GetLinearVelocity();
-                decay *= DECAY_MULTIPLIER * distance;
+                decay *= 0.002 * distance;
                 planet->ApplyForceToCenter(decay, true);
             }
 
@@ -171,6 +172,7 @@ int main() {
                 orbits[i].erase(orbits[i].begin());
             }
         }
+        sunStar.rotate(-1);
 
 
         // Step the simulation
@@ -183,13 +185,13 @@ int main() {
                 planets.erase(it);
                 planetShapes.erase(planetShapes.begin() + index);
                 orbits.erase(orbits.begin() + index);
-           
+
             }
             world.DestroyBody(body);
         }
         contactListener.bodiesToDestroy.clear();
 
-   
+
 
         // Update SFML shapes based on body position
 
@@ -208,7 +210,7 @@ int main() {
             sf::VertexArray orbitLine(sf::LineStrip, orbit.size());
             for (size_t j = 0; j < orbit.size(); ++j) {
                 orbitLine[j].position = orbit[j];
-                orbitLine[j].color = sf::Color(rand()%255, rand()%255, rand()%255); //  color
+                orbitLine[j].color = sf::Color(rand() % 255, rand() % 255, rand() % 255); //  color
             }
             window.draw(orbitLine);
         }
